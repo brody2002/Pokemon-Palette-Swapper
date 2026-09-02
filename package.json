@@ -1,0 +1,26 @@
+{
+  "name": "pokemon-palette-swapper",
+  "version": "1.0.0",
+  "description": "A localhost editor for Pokémon JASC palettes with live indexed-sprite previews.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test *.test.mjs",
+    "check": "node --check server.mjs && node --check palette.mjs && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brody2002/Pokemon-Palette-Swapper.git"
+  },
+  "keywords": [
+    "pokemon",
+    "palette",
+    "jasc-pal",
+    "rom-hacking",
+    "sprite-editor"
+  ],
+  "author": "Brody Roberts"
+}
