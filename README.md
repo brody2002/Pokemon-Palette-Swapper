@@ -35,6 +35,7 @@ Do not open `public/index.html` directly. Palette discovery, sprite loading, and
 - Automatic icon, overworld, front, and back sprite discovery
 - Live recoloring of indexed PNG previews
 - Color picker and direct RGB editing
+- Copy and paste colors between any open palette tiles
 - Individual Save, Reset, Close, and Save All controls
 - Female, GBA-style, egg, and same-folder battle variants
 - Exact-content matching when a browser hides a dragged file's full path
