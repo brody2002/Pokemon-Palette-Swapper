@@ -9,6 +9,8 @@ const changeCount = document.querySelector("#change-count");
 
 const editors = new Map();
 let saving = false;
+let copiedColor = null;
+let copiedControl = null;
 
 function cloneColors(colors) {
     return colors.map(color => [...color]);
@@ -82,6 +84,40 @@ function makeButton(label, className = "") {
     return button;
 }
 
+function updateColorControl(state, index) {
+    const control = state.colorControls[index];
+    const color = state.colors[index];
+    const hex = toHex(color).toUpperCase();
+    control.picker.value = hex;
+    color.forEach((value, channel) => {
+        control.inputs[channel].value = String(value);
+    });
+    control.label.textContent = `INDEX ${String(index).padStart(2, "0")} · ${hex}`;
+    control.copyButton.setAttribute("aria-label", `Copy color ${index} ${hex}`);
+    control.copyButton.title = `Copy ${hex}`;
+}
+
+function updatePasteButtons() {
+    const hex = copiedColor ? toHex(copiedColor).toUpperCase() : null;
+    for (const state of editors.values()) {
+        for (const [index, control] of state.colorControls.entries()) {
+            control.pasteButton.disabled = !copiedColor;
+            control.pasteButton.setAttribute("aria-label", hex ? `Paste ${hex} into color ${index}` : `Paste into color ${index}`);
+            control.pasteButton.title = hex ? `Paste ${hex}` : "Copy a color first";
+        }
+    }
+}
+
+function noteColorChange(state, index) {
+    const control = state.colorControls[index];
+    updateColorControl(state, index);
+    if (copiedControl === control && !colorsEqual([state.colors[index]], [copiedColor])) {
+        copiedControl.editor.classList.remove("is-copy-source");
+        copiedControl = null;
+    }
+    markChanged(state);
+}
+
 function createColorEditor(state, color, index) {
     const editor = document.createElement("div");
     editor.className = "color-editor";
@@ -97,6 +133,19 @@ function createColorEditor(state, color, index) {
     const label = document.createElement("span");
     label.className = "color-index";
     label.textContent = `INDEX ${String(index).padStart(2, "0")} · ${toHex(color).toUpperCase()}`;
+
+    const colorTools = document.createElement("div");
+    colorTools.className = "color-tools";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "color-tool";
+    copyButton.textContent = "Copy";
+    const pasteButton = document.createElement("button");
+    pasteButton.type = "button";
+    pasteButton.className = "color-tool";
+    pasteButton.textContent = "Paste";
+    pasteButton.disabled = copiedColor === null;
+    colorTools.append(copyButton, pasteButton);
 
     const rgbInputs = document.createElement("div");
     rgbInputs.className = "rgb-inputs";
@@ -122,46 +171,49 @@ function createColorEditor(state, color, index) {
             if (!Number.isInteger(nextValue) || nextValue < 0 || nextValue > 255)
                 return;
             state.colors[index][channel] = nextValue;
-            picker.value = toHex(state.colors[index]);
-            label.textContent = `INDEX ${String(index).padStart(2, "0")} · ${toHex(state.colors[index]).toUpperCase()}`;
-            markChanged(state);
+            noteColorChange(state, index);
         });
 
         input.addEventListener("change", () => {
             const nextValue = Math.min(255, Math.max(0, Number.parseInt(input.value || "0", 10)));
             input.value = String(nextValue);
             state.colors[index][channel] = nextValue;
-            picker.value = toHex(state.colors[index]);
-            label.textContent = `INDEX ${String(index).padStart(2, "0")} · ${toHex(state.colors[index]).toUpperCase()}`;
-            markChanged(state);
+            noteColorChange(state, index);
         });
         return input;
     });
 
     picker.addEventListener("input", () => {
         state.colors[index] = fromHex(picker.value);
-        state.colors[index].forEach((value, channel) => {
-            inputs[channel].value = String(value);
-        });
-        label.textContent = `INDEX ${String(index).padStart(2, "0")} · ${picker.value.toUpperCase()}`;
-        markChanged(state);
+        noteColorChange(state, index);
     });
 
-    meta.append(label, rgbInputs);
+    copyButton.addEventListener("click", () => {
+        if (copiedControl)
+            copiedControl.editor.classList.remove("is-copy-source");
+        copiedColor = [...state.colors[index]];
+        copiedControl = state.colorControls[index];
+        copiedControl.editor.classList.add("is-copy-source");
+        updatePasteButtons();
+    });
+
+    pasteButton.addEventListener("click", () => {
+        if (!copiedColor)
+            return;
+        state.colors[index] = [...copiedColor];
+        noteColorChange(state, index);
+    });
+
+    meta.append(label, rgbInputs, colorTools);
     editor.append(picker, meta);
-    state.colorControls.push({ picker, inputs, label });
+    state.colorControls.push({ editor, picker, inputs, label, copyButton, pasteButton });
+    updateColorControl(state, index);
+    updatePasteButtons();
     return editor;
 }
 
 function syncColorControls(state) {
-    state.colorControls.forEach((control, index) => {
-        const color = state.colors[index];
-        control.picker.value = toHex(color);
-        color.forEach((value, channel) => {
-            control.inputs[channel].value = String(value);
-        });
-        control.label.textContent = `INDEX ${String(index).padStart(2, "0")} · ${toHex(color).toUpperCase()}`;
-    });
+    state.colorControls.forEach((control, index) => updateColorControl(state, index));
 }
 
 function crc32(bytes, start, end) {
@@ -340,6 +392,7 @@ function openEditor(match) {
 
     Object.assign(state, { card, dirtyLabel, resetButton, saveButton });
     editors.set(state.path, state);
+    updatePasteButtons();
     paletteList.append(card);
 
     resetButton.addEventListener("click", () => {

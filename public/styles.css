@@ -408,6 +408,12 @@ h1 {
     gap: 8px;
     grid-template-columns: 46px minmax(0, 1fr);
     padding: 8px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.color-editor.is-copy-source {
+    border-color: var(--success);
+    box-shadow: 0 0 0 2px rgb(98 214 165 / 14%);
 }
 
 .color-picker {
@@ -421,13 +427,40 @@ h1 {
 
 .color-meta {
     display: grid;
-    gap: 6px;
+    gap: 5px;
 }
 
 .color-index {
     color: var(--muted);
     font-family: "SFMono-Regular", Consolas, monospace;
     font-size: 0.72rem;
+}
+
+.color-tools {
+    display: grid;
+    gap: 4px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.color-tool {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 700;
+    min-height: 20px;
+    padding: 2px 3px;
+}
+
+.color-tool:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.color-tool:disabled {
+    cursor: not-allowed;
+    opacity: 0.38;
 }
 
 .rgb-inputs {
