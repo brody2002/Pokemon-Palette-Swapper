@@ -19,6 +19,7 @@ const MIME_TYPES = new Map([
     [".css", "text/css; charset=utf-8"],
     [".html", "text/html; charset=utf-8"],
     [".js", "text/javascript; charset=utf-8"],
+    [".mjs", "text/javascript; charset=utf-8"],
     [".png", "image/png"],
     [".svg", "image/svg+xml"],
 ]);
@@ -237,18 +238,19 @@ export function resolveProjectRoot(args = process.argv.slice(2), environment = p
 export async function createPaletteEditorServer(options = {}) {
     const repoRoot = path.resolve(options.projectRoot ?? resolveProjectRoot());
     const paletteRoot = path.join(repoRoot, "graphics/pokemon");
+    let paletteIndex = [];
     try {
         const info = await stat(paletteRoot);
-        if (!info.isDirectory())
-            throw new Error("not a directory");
+        if (info.isDirectory())
+            paletteIndex = await buildPaletteIndex(repoRoot, paletteRoot);
     } catch {
-        throw new Error(`No graphics/pokemon directory was found under ${repoRoot}. Start with --project /path/to/pokemon-project.`);
+        // Same-name .pal/.png pairs work without a configured Pokémon project.
     }
 
     const context = {
         repoRoot,
         paletteRoot,
-        paletteIndex: await buildPaletteIndex(repoRoot, paletteRoot),
+        paletteIndex,
     };
     const server = http.createServer(async (request, response) => {
         try {
@@ -283,8 +285,12 @@ export async function startPaletteEditor(options = {}) {
     });
     const address = server.address();
     console.log(`Pokémon Palette Swapper: http://${host}:${address.port}`);
-    console.log(`Project: ${server.paletteEditor.repoRoot}`);
-    console.log(`Indexed ${server.paletteEditor.paletteIndex.length} .pal files.`);
+    if (server.paletteEditor.paletteIndex.length > 0) {
+        console.log(`Project: ${server.paletteEditor.repoRoot}`);
+        console.log(`Indexed ${server.paletteEditor.paletteIndex.length} .pal files.`);
+    } else {
+        console.log("Ready for matching .pal and .png file pairs from any folder.");
+    }
     return server;
 }
 
