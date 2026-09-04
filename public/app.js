@@ -1,4 +1,4 @@
-import { parseJascPalette, validatePaletteSpritePair } from "./palette-files.mjs";
+import { parseJascPalette, validatePaletteSpriteSet } from "./palette-files.mjs";
 import { hsvToRgb, rgbToHsv } from "./color-utils.mjs";
 
 const pairList = document.querySelector("#pair-list");
@@ -533,7 +533,7 @@ function openEditor(match) {
     previewPanel.className = "preview-panel";
     const previewHeading = document.createElement("div");
     previewHeading.className = "section-label";
-    previewHeading.textContent = "PNG preview";
+    previewHeading.textContent = state.assets.length === 1 ? "PNG preview" : `${state.assets.length} PNG previews`;
     const previewList = document.createElement("div");
     previewList.className = "preview-list";
     previewPanel.append(previewHeading, previewList);
@@ -680,30 +680,32 @@ function fileFromItem(item) {
 
 function updatePairRow(row) {
     const paletteFile = fileFromItem(row.palette);
-    const pngFile = fileFromItem(row.png);
-    const slotDetails = [
-        [row.paletteSlot, paletteFile, ".pal"],
-        [row.pngSlot, pngFile, ".png"],
-    ];
+    const pngFiles = row.pngs.map(fileFromItem);
 
-    for (const [slot, file, extension] of slotDetails) {
-        slot.button.classList.toggle("has-file", Boolean(file));
-        slot.action.textContent = file ? `Replace ${extension}` : `Drop ${extension} here`;
-        slot.detail.textContent = file?.name ?? "or click to choose";
-        slot.button.setAttribute("aria-label", `${file ? "Replace" : "Choose"} ${extension} file for row ${row.position}${file ? `; current file ${file.name}` : ""}`);
-    }
+    row.paletteSlot.button.classList.toggle("has-file", Boolean(paletteFile));
+    row.paletteSlot.action.textContent = paletteFile ? "Replace .pal" : "Drop .pal here";
+    row.paletteSlot.detail.textContent = paletteFile?.name ?? "or click to choose";
+    row.paletteSlot.button.setAttribute("aria-label", `${paletteFile ? "Replace" : "Choose"} .pal file for row ${row.position}${paletteFile ? `; current file ${paletteFile.name}` : ""}`);
+
+    row.pngSlot.button.classList.toggle("has-file", pngFiles.length > 0);
+    row.pngSlot.action.textContent = pngFiles.length > 0 ? "Replace .png files" : "Drop .png files here";
+    row.pngSlot.detail.textContent = pngFiles.length === 0
+        ? "one or more, or click to choose"
+        : pngFiles.length === 1 ? pngFiles[0].name : `${pngFiles.length} files · ${pngFiles.map(file => file.name).join(", ")}`;
+    row.pngSlot.detail.title = pngFiles.map(file => file.name).join("\n");
+    row.pngSlot.button.setAttribute("aria-label", `${pngFiles.length > 0 ? "Replace" : "Choose"} PNG files for row ${row.position}${pngFiles.length > 0 ? `; ${pngFiles.length} currently selected` : ""}`);
 
     row.element.classList.toggle("is-loading", row.loading);
     row.element.classList.toggle("is-ready", Boolean(row.editor));
     if (row.loading)
-        row.status.textContent = "Opening pair…";
+        row.status.textContent = "Opening previews…";
     else if (row.editor?.dirty)
-        row.status.textContent = "Editing · unsaved changes";
+        row.status.textContent = `Editing ${pngFiles.length} preview${pngFiles.length === 1 ? "" : "s"} · unsaved changes`;
     else if (row.editor)
-        row.status.textContent = "Ready to edit";
-    else if (paletteFile && !pngFile)
-        row.status.textContent = "Choose a PNG sprite";
-    else if (!paletteFile && pngFile)
+        row.status.textContent = `${pngFiles.length} PNG preview${pngFiles.length === 1 ? "" : "s"} ready to edit`;
+    else if (paletteFile && pngFiles.length === 0)
+        row.status.textContent = "Choose one or more PNG sprites";
+    else if (!paletteFile && pngFiles.length > 0)
         row.status.textContent = "Choose a PAL palette";
     else
         row.status.textContent = "Choose both files";
@@ -720,26 +722,29 @@ function renumberPairRows() {
     }
 }
 
-async function itemFromDrop(dataTransfer) {
+async function itemsFromDrop(dataTransfer) {
     const transferItems = [...dataTransfer.items].filter(item => item.kind === "file");
     const files = [...dataTransfer.files];
-    if ((transferItems.length || files.length) !== 1)
-        throw new Error("Drop exactly one file into each slot.");
-
-    const transferItem = transferItems[0];
-    const file = transferItem?.getAsFile() ?? files[0];
-    if (!file)
-        throw new Error("That item is not a file.");
-
-    let handle = null;
-    if (transferItem?.getAsFileSystemHandle) {
-        try {
-            handle = await transferItem.getAsFileSystemHandle();
-        } catch {
-            // Browsers without writable drag handles still support downloading edits.
-        }
+    if (transferItems.length === 0) {
+        if (files.length === 0)
+            throw new Error("Drop at least one file into the slot.");
+        return files.map(file => ({ file, handle: null }));
     }
-    return { file, handle };
+
+    return Promise.all(transferItems.map(async transferItem => {
+        const file = transferItem.getAsFile();
+        if (!file)
+            throw new Error("That item is not a file.");
+        let handle = null;
+        if (transferItem.getAsFileSystemHandle) {
+            try {
+                handle = await transferItem.getAsFileSystemHandle();
+            } catch {
+                // Browsers without writable drag handles still support downloading edits.
+            }
+        }
+        return { file, handle };
+    }));
 }
 
 async function openPairForRow(row) {
@@ -749,34 +754,39 @@ async function openPairForRow(row) {
     updatePairRow(row);
 
     try {
-        const pair = validatePaletteSpritePair(row.palette, row.png);
-        const paletteFile = fileFromItem(pair.palette);
-        const pngFile = fileFromItem(pair.png);
-        const [paletteContent, pngBuffer] = await Promise.all([paletteFile.text(), pngFile.arrayBuffer()]);
+        const fileSet = validatePaletteSpriteSet(row.palette, row.pngs);
+        const paletteFile = fileFromItem(fileSet.palette);
+        const pngFiles = fileSet.pngs.map(fileFromItem);
+        const [paletteContent, pngBuffers] = await Promise.all([
+            paletteFile.text(),
+            Promise.all(pngFiles.map(file => file.arrayBuffer())),
+        ]);
         const palette = parseJascPalette(paletteContent);
-        const dimensions = readDroppedPngDimensions(pngBuffer);
+        const dimensions = pngBuffers.map(readDroppedPngDimensions);
         if (!pairRows.has(row.id) || row.loadVersion !== loadVersion)
             return;
 
-        const largestDimension = Math.max(dimensions.width, dimensions.height);
-        const scale = largestDimension <= 64 ? 3 : largestDimension <= 128 ? 2 : 1;
         row.editor = openEditor({
             path: `pair:${row.id}`,
-            displayPath: `${paletteFile.name} → ${pngFile.name}`,
-            species: pngFile.name.replace(/\.png$/i, ""),
+            displayPath: `${paletteFile.name} → ${pngFiles.map(file => file.name).join(", ")}`,
+            species: "sprite",
             paletteName: paletteFile.name,
             version: palette.version,
             colors: palette.colors,
             diskColors: palette.colors,
             expectedContent: paletteContent,
-            fileHandle: pair.palette.handle ?? null,
+            fileHandle: fileSet.palette.handle ?? null,
             row,
-            assets: [{
-                label: pngFile.name,
-                scale,
-                ...dimensions,
-                buffer: pngBuffer,
-            }],
+            assets: pngFiles.map((file, index) => {
+                const size = dimensions[index];
+                const largestDimension = Math.max(size.width, size.height);
+                return {
+                    label: file.name,
+                    scale: largestDimension <= 64 ? 3 : largestDimension <= 128 ? 2 : 1,
+                    ...size,
+                    buffer: pngBuffers[index],
+                };
+            }),
         });
     } catch (error) {
         if (pairRows.has(row.id) && row.loadVersion === loadVersion)
@@ -789,20 +799,24 @@ async function openPairForRow(row) {
     }
 }
 
-async function setRowFile(row, kind, item) {
+async function setRowFiles(row, kind, items) {
     try {
-        const pairCandidate = kind === "palette"
-            ? { palette: item, png: row.png }
-            : { palette: row.palette, png: item };
-        const file = fileFromItem(item);
+        const selectedItems = [...items];
         const expectedExtension = kind === "palette" ? ".pal" : ".png";
-        if (!file?.name?.toLowerCase().endsWith(expectedExtension))
+        if (selectedItems.length === 0)
+            throw new Error(`Choose at least one ${expectedExtension} file.`);
+        if (kind === "palette" && selectedItems.length !== 1)
+            throw new Error("The palette slot accepts exactly one .pal file.");
+        if (selectedItems.some(item => !fileFromItem(item)?.name?.toLowerCase().endsWith(expectedExtension)))
             throw new Error(`The ${expectedExtension} slot only accepts ${expectedExtension} files.`);
 
-        row[kind] = item;
+        if (kind === "palette")
+            row.palette = selectedItems[0];
+        else
+            row.pngs = selectedItems;
         removeEditor(row.editor);
         updatePairRow(row);
-        if (pairCandidate.palette && pairCandidate.png)
+        if (row.palette && row.pngs.length > 0)
             await openPairForRow(row);
     } catch (error) {
         addNotice(`Row ${row.position}: ${error.message}`);
@@ -820,12 +834,13 @@ async function browseForSlot(row, kind, input) {
         ? { description: "JASC palette", accept: { "text/plain": [extension] } }
         : { description: "PNG sprite", accept: { "image/png": [extension] } };
     try {
-        const [handle] = await window.showOpenFilePicker({
+        const handles = await window.showOpenFilePicker({
             excludeAcceptAllOption: true,
-            multiple: false,
+            multiple: kind === "png",
             types: [type],
         });
-        await setRowFile(row, kind, { file: await handle.getFile(), handle });
+        const items = await Promise.all(handles.map(async handle => ({ file: await handle.getFile(), handle })));
+        await setRowFiles(row, kind, items);
     } catch (error) {
         if (error.name !== "AbortError")
             addNotice(`Could not choose ${extension}: ${error.message}`);
@@ -840,7 +855,7 @@ function createFileSlot(row, kind) {
 
     const type = document.createElement("span");
     type.className = "file-slot-type";
-    type.textContent = kind === "palette" ? "Palette" : "Sprite";
+    type.textContent = kind === "palette" ? "Palette" : "Sprites";
     const action = document.createElement("strong");
     action.textContent = `Drop ${extension} here`;
     const detail = document.createElement("span");
@@ -851,13 +866,14 @@ function createFileSlot(row, kind) {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = extension;
+    input.multiple = kind === "png";
     input.hidden = true;
 
     button.addEventListener("click", () => browseForSlot(row, kind, input));
     input.addEventListener("change", async () => {
-        const [file] = input.files;
-        if (file)
-            await setRowFile(row, kind, { file, handle: null });
+        const items = [...input.files].map(file => ({ file, handle: null }));
+        if (items.length > 0)
+            await setRowFiles(row, kind, items);
         input.value = "";
     });
     for (const eventName of ["dragenter", "dragover"]) {
@@ -876,7 +892,7 @@ function createFileSlot(row, kind) {
     }
     button.addEventListener("drop", async event => {
         try {
-            await setRowFile(row, kind, await itemFromDrop(event.dataTransfer));
+            await setRowFiles(row, kind, await itemsFromDrop(event.dataTransfer));
         } catch (error) {
             addNotice(`Row ${row.position}: ${error.message}`);
         }
@@ -900,7 +916,7 @@ function addPairRow(options = {}) {
         id: ++pairRowSequence,
         position: pairRows.size + 1,
         palette: null,
-        png: null,
+        pngs: [],
         editor: null,
         loading: false,
         loadVersion: 0,

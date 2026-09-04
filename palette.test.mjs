@@ -6,7 +6,7 @@ import {
     serializeJascPalette,
 } from "./palette.mjs";
 import { hsvToRgb, rgbToHsv } from "./public/color-utils.mjs";
-import { validatePaletteSpritePair } from "./public/palette-files.mjs";
+import { validatePaletteSpriteSet } from "./public/palette-files.mjs";
 import { createPaletteEditorServer } from "./server.mjs";
 
 const PALETTE = [
@@ -51,26 +51,30 @@ test("a row accepts unrelated palette and PNG filenames from any path", () => {
     const palette = { file: { name: "shared_colors.PAL", path: "/one/shared_colors.PAL" }, handle: {} };
     const png = { file: { name: "front_frame.PNG", path: "/elsewhere/front_frame.PNG" }, handle: {} };
 
-    assert.deepEqual(validatePaletteSpritePair(palette, png), { palette, png });
+    assert.deepEqual(validatePaletteSpriteSet(palette, [png]), { palette, pngs: [png] });
 });
 
-test("the same palette can be reused with multiple PNG rows", () => {
+test("one palette can drive multiple PNGs in a single row", () => {
     const palette = { name: "shared.pal" };
-    const first = validatePaletteSpritePair(palette, { name: "icon.png" });
-    const second = validatePaletteSpritePair(palette, { name: "overworld.png" });
+    const pngs = [{ name: "icon.png" }, { name: "overworld.png" }, { name: "battle.PNG" }];
+    const fileSet = validatePaletteSpriteSet(palette, pngs);
 
-    assert.equal(first.palette, second.palette);
-    assert.notEqual(first.png, second.png);
+    assert.equal(fileSet.palette, palette);
+    assert.deepEqual(fileSet.pngs, pngs);
 });
 
 test("row slots reject swapped or unsupported file types", () => {
     assert.throws(
-        () => validatePaletteSpritePair({ name: "sprite.png" }, { name: "palette.pal" }),
+        () => validatePaletteSpriteSet({ name: "sprite.png" }, [{ name: "front.png" }]),
         /palette slot requires one \.pal/,
     );
     assert.throws(
-        () => validatePaletteSpritePair({ name: "palette.pal" }, { name: "notes.txt" }),
-        /sprite slot requires one \.png/,
+        () => validatePaletteSpriteSet({ name: "palette.pal" }, []),
+        /sprite slot requires at least one \.png/,
+    );
+    assert.throws(
+        () => validatePaletteSpriteSet({ name: "palette.pal" }, [{ name: "front.png" }, { name: "notes.txt" }]),
+        /sprite slot only accepts \.png/,
     );
 });
 

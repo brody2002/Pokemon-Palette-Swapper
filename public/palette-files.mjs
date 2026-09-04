@@ -30,12 +30,15 @@ function droppedFile(item) {
     return item?.file ?? item;
 }
 
-export function validatePaletteSpritePair(palette, png) {
+export function validatePaletteSpriteSet(palette, pngs) {
     const paletteFile = droppedFile(palette);
-    const pngFile = droppedFile(png);
     if (!paletteFile?.name?.toLowerCase().endsWith(".pal"))
         throw new Error("The palette slot requires one .pal file.");
-    if (!pngFile?.name?.toLowerCase().endsWith(".png"))
-        throw new Error("The sprite slot requires one .png file.");
-    return { palette, png };
+    if (!Array.isArray(pngs) || pngs.length === 0)
+        throw new Error("The sprite slot requires at least one .png file.");
+    for (const png of pngs) {
+        if (!droppedFile(png)?.name?.toLowerCase().endsWith(".png"))
+            throw new Error("The sprite slot only accepts .png files.");
+    }
+    return { palette, pngs };
 }
