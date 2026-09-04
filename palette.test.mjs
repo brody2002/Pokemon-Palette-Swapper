@@ -1,17 +1,13 @@
 import assert from "node:assert/strict";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import {
-    findAffectedSprites,
     parseJascPalette,
     readPngDimensions,
     serializeJascPalette,
 } from "./palette.mjs";
 import { hsvToRgb, rgbToHsv } from "./public/color-utils.mjs";
-import { groupPaletteSpriteFiles } from "./public/palette-files.mjs";
-import { createPaletteEditorServer, resolveProjectRoot } from "./server.mjs";
+import { validatePaletteSpritePair } from "./public/palette-files.mjs";
+import { createPaletteEditorServer } from "./server.mjs";
 
 const PALETTE = [
     "JASC-PAL",
@@ -30,22 +26,6 @@ function pngHeader(width = 32, height = 64) {
     buffer.writeUInt32BE(width, 16);
     buffer.writeUInt32BE(height, 20);
     return buffer;
-}
-
-async function withFixture(callback) {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pokemon-palette-swapper-"));
-    try {
-        await callback(root);
-    } finally {
-        await rm(root, { recursive: true, force: true });
-    }
-}
-
-async function writeSpecies(root, species, files) {
-    const directory = path.join(root, "graphics/pokemon", species);
-    await mkdir(directory, { recursive: true });
-    await Promise.all(Object.entries(files).map(([name, content]) => writeFile(path.join(directory, name), content)));
-    return directory;
 }
 
 test("JASC palettes round-trip with all RGB entries intact", () => {
@@ -67,32 +47,31 @@ test("JASC parser rejects missing and out-of-range colors", () => {
     );
 });
 
-test("dropped palettes pair with same-basename PNGs regardless of path", () => {
-    const palette = { name: "Custom Sprite.pal", path: "/tmp/somewhere/Custom Sprite.pal" };
-    const png = { name: "custom sprite.PNG", path: "/another/place/custom sprite.PNG" };
-    const otherPalette = { name: "repository-only.pal" };
-    const otherPng = { name: "orphan.png" };
+test("a row accepts unrelated palette and PNG filenames from any path", () => {
+    const palette = { file: { name: "shared_colors.PAL", path: "/one/shared_colors.PAL" }, handle: {} };
+    const png = { file: { name: "front_frame.PNG", path: "/elsewhere/front_frame.PNG" }, handle: {} };
 
-    const grouped = groupPaletteSpriteFiles([palette, png, otherPalette, otherPng]);
-
-    assert.equal(grouped.pairs.length, 1);
-    assert.equal(grouped.pairs[0].palette, palette);
-    assert.equal(grouped.pairs[0].png, png);
-    assert.deepEqual(grouped.unmatchedPalettes, [otherPalette]);
-    assert.deepEqual(grouped.unmatchedPngs, [otherPng]);
-    assert.deepEqual(grouped.ambiguous, []);
+    assert.deepEqual(validatePaletteSpritePair(palette, png), { palette, png });
 });
 
-test("duplicate dropped basenames are reported as ambiguous", () => {
-    const grouped = groupPaletteSpriteFiles([
-        { name: "sprite.pal" },
-        { name: "SPRITE.pal" },
-        { name: "sprite.png" },
-    ]);
+test("the same palette can be reused with multiple PNG rows", () => {
+    const palette = { name: "shared.pal" };
+    const first = validatePaletteSpritePair(palette, { name: "icon.png" });
+    const second = validatePaletteSpritePair(palette, { name: "overworld.png" });
 
-    assert.equal(grouped.pairs.length, 0);
-    assert.equal(grouped.ambiguous.length, 1);
-    assert.equal(grouped.ambiguous[0].palettes.length, 2);
+    assert.equal(first.palette, second.palette);
+    assert.notEqual(first.png, second.png);
+});
+
+test("row slots reject swapped or unsupported file types", () => {
+    assert.throws(
+        () => validatePaletteSpritePair({ name: "sprite.png" }, { name: "palette.pal" }),
+        /palette slot requires one \.pal/,
+    );
+    assert.throws(
+        () => validatePaletteSpritePair({ name: "palette.pal" }, { name: "notes.txt" }),
+        /sprite slot requires one \.png/,
+    );
 });
 
 test("custom color picker conversions preserve RGB colors", () => {
@@ -109,114 +88,26 @@ test("custom color picker conversions preserve RGB colors", () => {
         assert.deepEqual(hsvToRgb(rgbToHsv(color)), color);
 });
 
-test("palette naming conventions map to icon, overworld, and battle sprites", async () => {
-    await withFixture(async root => {
-        const directory = await writeSpecies(root, "infernape", {
-            "icon.png": pngHeader(),
-            "icon_shiny.pal": PALETTE,
-            "overworld.png": pngHeader(192, 32),
-            "overworld_shiny.pal": PALETTE,
-            "anim_front.png": pngHeader(64, 128),
-            "back.png": pngHeader(64, 64),
-            "shiny.pal": PALETTE,
-        });
-
-        const icon = await findAffectedSprites(path.join(directory, "icon_shiny.pal"), root);
-        const overworld = await findAffectedSprites(path.join(directory, "overworld_shiny.pal"), root);
-        const battle = await findAffectedSprites(path.join(directory, "shiny.pal"), root);
-
-        assert.deepEqual(icon.assets.map(asset => path.basename(asset.path)), ["icon.png"]);
-        assert.deepEqual(overworld.assets.map(asset => path.basename(asset.path)), ["overworld.png"]);
-        assert.deepEqual(battle.assets.map(asset => path.basename(asset.path)), ["anim_front.png", "back.png"]);
-    });
-});
-
-test("GBA and special palettes map to alternate sprite files", async () => {
-    await withFixture(async root => {
-        const gbaDirectory = await writeSpecies(root, "bulbasaur", {
-            "anim_front_gba.png": pngHeader(64, 128),
-            "back_gba.png": pngHeader(64, 64),
-            "normal_gba.pal": PALETTE,
-        });
-        const eggDirectory = await writeSpecies(root, "egg", {
-            "hatch.png": pngHeader(),
-            "hatch_shiny.pal": PALETTE,
-        });
-
-        const gba = await findAffectedSprites(path.join(gbaDirectory, "normal_gba.pal"), root);
-        const hatch = await findAffectedSprites(path.join(eggDirectory, "hatch_shiny.pal"), root);
-
-        assert.deepEqual(gba.assets.map(asset => path.basename(asset.path)), ["anim_front_gba.png", "back_gba.png"]);
-        assert.deepEqual(hatch.assets.map(asset => path.basename(asset.path)), ["hatch.png"]);
-    });
-});
-
 test("sprite dimensions are read from the PNG header", () => {
     assert.deepEqual(readPngDimensions(pngHeader(32, 64)), { width: 32, height: 64 });
 });
 
-test("project path supports a flag, environment variable, and working-directory default", () => {
-    assert.equal(resolveProjectRoot(["--project", "../game"], {}, "/work/tool"), "/work/game");
-    assert.equal(resolveProjectRoot([], { POKEMON_PROJECT_ROOT: "/games/pokemon" }, "/work/tool"), "/games/pokemon");
-    assert.equal(resolveProjectRoot([], {}, "/games/pokemon"), "/games/pokemon");
-});
+test("server exposes the standalone row-based app without repository APIs", async () => {
+    const server = createPaletteEditorServer();
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const baseUrl = `http://127.0.0.1:${port}`;
 
-test("server starts in standalone file-pair mode without graphics/pokemon", async () => {
-    await withFixture(async root => {
-        const server = await createPaletteEditorServer({ projectRoot: root });
-        await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-        const { port } = server.address();
-        const baseUrl = `http://127.0.0.1:${port}`;
-
-        try {
-            const health = await (await fetch(`${baseUrl}/api/health`)).json();
-            assert.equal(health.palettes, 0);
-            const moduleResponse = await fetch(`${baseUrl}/palette-files.mjs`);
-            assert.match(moduleResponse.headers.get("content-type"), /^text\/javascript/);
-        } finally {
-            await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-        }
-    });
-});
-
-test("server resolves and saves palettes inside the selected project", async () => {
-    await withFixture(async root => {
-        const directory = await writeSpecies(root, "infernape", {
-            "icon.png": pngHeader(),
-            "icon_shiny.pal": PALETTE,
-        });
-        const server = await createPaletteEditorServer({ projectRoot: root });
-        await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-        const { port } = server.address();
-        const baseUrl = `http://127.0.0.1:${port}`;
-
-        try {
-            const resolvedResponse = await fetch(`${baseUrl}/api/resolve-palettes`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ files: [{ clientId: "one", name: "icon_shiny.pal", content: PALETTE }] }),
-            });
-            const resolved = await resolvedResponse.json();
-            assert.equal(resolved.results[0].matches[0].path, "graphics/pokemon/infernape/icon_shiny.pal");
-            assert.equal(resolved.results[0].matches[0].assets[0].width, 32);
-
-            const changed = PALETTE.replace("224 56 64", "120 56 64");
-            const saveResponse = await fetch(`${baseUrl}/api/save-palettes`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ entries: [{
-                    path: "graphics/pokemon/infernape/icon_shiny.pal",
-                    content: changed,
-                    expectedContent: PALETTE,
-                }] }),
-            });
-            assert.equal(saveResponse.status, 200);
-            assert.equal(await readFile(path.join(directory, "icon_shiny.pal"), "utf8"), changed);
-
-            const traversalResponse = await fetch(`${baseUrl}/api/asset?path=${encodeURIComponent("../secret.png")}`);
-            assert.equal(traversalResponse.status, 400);
-        } finally {
-            await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-        }
-    });
+    try {
+        const health = await (await fetch(`${baseUrl}/api/health`)).json();
+        assert.deepEqual(health, { ok: true });
+        const index = await (await fetch(baseUrl)).text();
+        assert.match(index, /id="pair-list"/);
+        const moduleResponse = await fetch(`${baseUrl}/palette-files.mjs`);
+        assert.match(moduleResponse.headers.get("content-type"), /^text\/javascript/);
+        const removedApi = await fetch(`${baseUrl}/api/resolve-palettes`, { method: "POST" });
+        assert.equal(removedApi.status, 405);
+    } finally {
+        await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
 });

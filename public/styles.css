@@ -78,8 +78,7 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible,
-.drop-zone:focus-within {
+select:focus-visible {
     outline: 3px solid rgb(255 203 69 / 35%);
     outline-offset: 2px;
 }
@@ -176,54 +175,140 @@ h1 {
     opacity: 0.45;
 }
 
-.text-button {
-    background: transparent;
-    border: 0;
-    color: var(--accent);
-    padding: 0;
-    text-decoration: underline;
-}
-
-.drop-zone {
-    align-items: center;
+.pair-builder {
     background: rgb(28 36 51 / 58%);
-    border: 2px dashed var(--border-strong);
+    border: 1px solid var(--border);
     border-radius: 16px;
+    padding: 20px;
+}
+
+.pair-builder-heading {
+    align-items: flex-end;
     display: flex;
-    gap: 18px;
-    justify-content: center;
-    min-height: 128px;
-    padding: 24px;
-    text-align: left;
-    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+    gap: 28px;
+    justify-content: space-between;
+    margin-bottom: 16px;
 }
 
-.drop-zone.is-dragging {
-    background: rgb(255 203 69 / 9%);
-    border-color: var(--accent);
-    transform: translateY(-2px);
+.pair-builder-heading h2 {
+    font-size: 1.2rem;
+    margin-bottom: 0;
 }
 
-.drop-zone.is-loading {
+.pair-builder-heading > p {
+    color: var(--muted);
+    line-height: 1.45;
+    margin-bottom: 0;
+    max-width: 500px;
+    text-align: right;
+}
+
+.pair-list {
+    display: grid;
+    gap: 10px;
+}
+
+.pair-row {
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 116px minmax(0, 1fr) auto;
+    padding: 12px;
+    transition: border-color 120ms ease, opacity 120ms ease;
+}
+
+.pair-row.is-ready {
+    border-color: rgb(98 214 165 / 42%);
+}
+
+.pair-row.is-loading {
     opacity: 0.65;
     pointer-events: none;
 }
 
-.drop-zone p {
-    color: var(--muted);
-    margin: 7px 0 0;
+.pair-row-label {
+    display: grid;
+    gap: 5px;
 }
 
-.drop-icon {
-    align-items: center;
-    background: var(--accent);
-    border-radius: 50%;
-    color: #281c00;
-    display: flex;
-    flex: 0 0 44px;
-    font-size: 1.8rem;
-    height: 44px;
-    justify-content: center;
+.pair-row-number {
+    font-size: 0.9rem;
+}
+
+.pair-row-status {
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.3;
+}
+
+.pair-row-slots {
+    align-items: stretch;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+}
+
+.file-slot {
+    background: var(--surface-raised);
+    border: 1px dashed var(--border-strong);
+    border-radius: 9px;
+    color: var(--text);
+    display: grid;
+    gap: 3px;
+    min-height: 76px;
+    padding: 10px 12px;
+    text-align: left;
+    transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.file-slot:hover,
+.file-slot.is-dragging {
+    background: rgb(255 203 69 / 8%);
+    border-color: var(--accent);
+}
+
+.file-slot.is-dragging {
+    transform: translateY(-2px);
+}
+
+.file-slot.has-file {
+    border-style: solid;
+    border-color: rgb(98 214 165 / 55%);
+}
+
+.file-slot-type {
+    color: var(--accent);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.file-slot-detail {
+    color: var(--muted);
+    font-size: 0.72rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pair-connector {
+    align-self: center;
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.pair-remove {
+    min-height: 38px;
+    padding: 7px 12px;
+}
+
+.add-row-button {
+    margin-top: 12px;
+    width: 100%;
 }
 
 .notices {
@@ -264,11 +349,7 @@ h1 {
 
 .scroll-region {
     margin-top: 22px;
-    max-height: calc(100vh - 320px);
     min-height: 260px;
-    overflow-y: auto;
-    padding-right: 8px;
-    scrollbar-color: var(--border-strong) transparent;
 }
 
 .empty-state {
@@ -655,7 +736,8 @@ h1 {
     }
 
     .app-header,
-    .card-header {
+    .card-header,
+    .pair-builder-heading {
         align-items: stretch;
         flex-direction: column;
     }
@@ -664,13 +746,18 @@ h1 {
         align-items: stretch;
     }
 
-    .drop-zone {
-        align-items: flex-start;
+    .pair-builder-heading > p {
+        text-align: left;
     }
 
-    .scroll-region {
-        max-height: none;
-        overflow: visible;
+    .pair-row {
+        align-items: stretch;
+        grid-template-columns: 1fr auto;
+    }
+
+    .pair-row-slots {
+        grid-column: 1 / -1;
+        grid-row: 2;
     }
 
     .palette-grid {
@@ -679,6 +766,14 @@ h1 {
 }
 
 @media (max-width: 390px) {
+    .pair-row-slots {
+        grid-template-columns: 1fr;
+    }
+
+    .pair-connector {
+        justify-self: center;
+    }
+
     .palette-grid {
         grid-template-columns: 1fr;
     }

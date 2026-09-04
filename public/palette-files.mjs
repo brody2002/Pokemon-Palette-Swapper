@@ -30,44 +30,12 @@ function droppedFile(item) {
     return item?.file ?? item;
 }
 
-function fileStem(filename) {
-    return filename.slice(0, filename.lastIndexOf("."));
-}
-
-export function groupPaletteSpriteFiles(items) {
-    const groups = new Map();
-
-    for (const item of items) {
-        const file = droppedFile(item);
-        if (!file || typeof file.name !== "string")
-            continue;
-        const lowerName = file.name.toLowerCase();
-        const extension = lowerName.endsWith(".pal") ? ".pal" : lowerName.endsWith(".png") ? ".png" : null;
-        if (!extension)
-            continue;
-
-        const stem = fileStem(file.name);
-        const key = stem.toLowerCase();
-        if (!groups.has(key))
-            groups.set(key, { stem, palettes: [], pngs: [] });
-        groups.get(key)[extension === ".pal" ? "palettes" : "pngs"].push(item);
-    }
-
-    const pairs = [];
-    const unmatchedPalettes = [];
-    const unmatchedPngs = [];
-    const ambiguous = [];
-
-    for (const group of groups.values()) {
-        if (group.palettes.length === 1 && group.pngs.length === 1) {
-            pairs.push({ stem: group.stem, palette: group.palettes[0], png: group.pngs[0] });
-        } else if (group.palettes.length > 1 || group.pngs.length > 1) {
-            ambiguous.push(group);
-        } else {
-            unmatchedPalettes.push(...group.palettes);
-            unmatchedPngs.push(...group.pngs);
-        }
-    }
-
-    return { pairs, unmatchedPalettes, unmatchedPngs, ambiguous };
+export function validatePaletteSpritePair(palette, png) {
+    const paletteFile = droppedFile(palette);
+    const pngFile = droppedFile(png);
+    if (!paletteFile?.name?.toLowerCase().endsWith(".pal"))
+        throw new Error("The palette slot requires one .pal file.");
+    if (!pngFile?.name?.toLowerCase().endsWith(".png"))
+        throw new Error("The sprite slot requires one .png file.");
+    return { palette, png };
 }
