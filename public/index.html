@@ -14,7 +14,7 @@
     <aside id="protocol-warning" class="protocol-warning" hidden>
         <p class="eyebrow">Local server required</p>
         <h2>Don’t open this HTML file directly</h2>
-        <p>From this repository, run <code>npm start -- --project /path/to/pokemon-project</code>, then use the localhost address below.</p>
+        <p>From this repository, run <code>npm start</code>, then use the localhost address below.</p>
         <a class="button button-primary" href="http://127.0.0.1:4173/">Open http://127.0.0.1:4173</a>
     </aside>
     <main class="app-shell">
@@ -22,7 +22,7 @@
             <div>
                 <p class="eyebrow">Indexed Pokémon graphics tool</p>
                 <h1>Pokémon Palette Swapper</h1>
-                <p class="subtitle">Drop matching JASC <code>.pal</code> and indexed <code>.png</code> files, edit their colors, and preview every change live.</p>
+                <p class="subtitle">Pair any JASC <code>.pal</code> with any indexed <code>.png</code>, edit its colors, and preview every change live.</p>
             </div>
             <div class="header-actions">
                 <span id="change-count" class="change-count">No unsaved changes</span>
@@ -30,21 +30,24 @@
             </div>
         </header>
 
-        <section id="drop-zone" class="drop-zone" aria-label="Drop matching palette and PNG files here" title="Click to choose palette and PNG files">
-            <input id="file-input" type="file" accept=".pal,.png" multiple hidden>
-            <div class="drop-icon" aria-hidden="true">＋</div>
-            <div>
-                <strong>Drop a <code>.pal</code> and same-name <code>.png</code></strong>
-                <p>For example, <code>lugia.pal</code> pairs with <code>lugia.png</code> from any folder. You can also <button id="browse-files" class="text-button" type="button">browse for files</button>.</p>
+        <section class="pair-builder" aria-labelledby="pair-builder-title">
+            <div class="pair-builder-heading">
+                <div>
+                    <p class="eyebrow">File pairs</p>
+                    <h2 id="pair-builder-title">Choose one palette and one or more sprites per row</h2>
+                </div>
+                <p>Names and folders do not need to match. Put every PNG that uses the palette into the same row.</p>
             </div>
+            <div id="pair-list" class="pair-list"></div>
+            <button id="add-row" class="button add-row-button" type="button">＋ Add row</button>
         </section>
 
         <div id="notices" class="notices" aria-live="polite"></div>
 
         <section class="scroll-region" aria-label="Open palette editors">
             <div id="empty-state" class="empty-state">
-                <p>Drag a matching palette and PNG here to begin.</p>
-                <span>The PNG will appear beside its indexed palette, wherever the two files are stored.</span>
+                <p>Add files to the first row to begin.</p>
+                <span>Once the PAL and at least one PNG are selected, every sprite preview will open below.</span>
             </div>
             <div id="palette-list" class="palette-list"></div>
         </section>
