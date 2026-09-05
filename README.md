@@ -4,6 +4,10 @@ A dependency-free localhost web app for editing JASC `.pal` files with live prev
 
 The public repository contains only the editor. It does not include ROMs, game data, sprites, or palettes.
 
+## Screenshot:
+<img width="721" height="565" alt="Screenshot 2026-09-03 at 11 11 17 PM" src="https://github.com/user-attachments/assets/cf029f1e-ccc3-453b-892e-77f1cfb1efc4" />
+
+
 ## Requirements
 
 - Node.js 18 or newer
